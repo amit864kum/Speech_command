@@ -1,0 +1,18 @@
+[
+  {
+    "index": 0,
+    "previous_hash": "0",
+    "records": [
+      "Genesis Block"
+    ],
+    "access_logs": [],
+    "miner": "System",
+    "model_hash": "0",
+    "difficulty": 2,
+    "nonce": 0,
+    "timestamp": 1753172834.507054,
+    "signature": null,
+    "public_key": null,
+    "hash": null
+  }
+]

@@ -1,0 +1,18 @@
+# General project settings
+project_name: "Federated_GKWS_CNN"
+
+# Federated learning parameters
+fl_rounds: 5
+num_clients: 10
+client_fraction: 1.0 # Fraction of clients participating in each round
+local_epochs: 5
+batch_size: 32
+
+# Model and dataset parameters
+model_name: "GKWS_CNN"
+dataset_name: "SpeechCommands"
+num_classes: 10 # Number of keywords (yes, no, up, down, etc.)
+learning_rate: 0.01
+
+# Data paths
+data_dir: "data/SpeechCommands/speech_commands_v0.02/"
