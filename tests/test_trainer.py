@@ -2,80 +2,79 @@ import unittest
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from fl_trainer import FLTrainer
-from model import GKWS_CNN
+from torch.utils.data import DataLoader, Subset
+from data_loader import SpeechCommandsDataLoader  # Import the real data loader
+from model import SimpleAudioClassifier  # Import your model
+from fl_trainer import FLTrainer # Import your FL Trainer
 
 class TestFLTrainer(unittest.TestCase):
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         """
-        Set up a simple model, optimizer, and dummy data for testing.
+        Load a small, real dataset once for all tests in this class.
         """
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.num_classes = 10
-        self.learning_rate = 0.01
+        print("Loading real dataset for trainer testing...")
+        data_loader = SpeechCommandsDataLoader(num_clients=1)
+        full_dataset = data_loader.get_client_data(client_id=0)
         
-        # Initialize the model
-        self.model = GKWS_CNN(num_classes=self.num_classes).to(self.device)
+        # Take a small subset of the real data for fast testing
+        dataset_size = len(full_dataset)
+        subset_size = min(100, dataset_size) # Use at most 100 samples
+        cls.test_dataset = Subset(full_dataset, range(subset_size))
         
-        # Initialize the optimizer
-        self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
-        
-        # Initialize the trainer
-        self.trainer = FLTrainer(self.model, self.optimizer, self.learning_rate, self.device)
-        
-        # Create a dummy dataset for testing
-        # 4 samples, each with a (1, 64, 49) spectrogram and a corresponding label
-        self.dummy_data = []
-        for i in range(4):
-            # Create a spectrogram for a dummy "correct" prediction
-            spectrogram = torch.randn(1, 64, 49)
-            label = torch.tensor(i % self.num_classes)
-            self.dummy_data.append((spectrogram, label))
+        cls.input_dim = 64
+        cls.num_classes = 10
+        cls.device = torch.device("cpu")
+        print("Real dataset loaded successfully for trainer testing.")
 
     def test_local_model_update(self):
         """
         Tests that the model's parameters are updated after a training epoch.
         """
-        # 1. Get the initial state of the model's weights
-        initial_state_dict = self.model.state_dict()
+        model = SimpleAudioClassifier(self.input_dim, self.num_classes).to(self.device)
+        optimizer = optim.SGD(model.parameters(), lr=0.01)
+        trainer = FLTrainer(model, optimizer, 0.01, self.device)
         
-        # 2. Perform a local training epoch
-        self.trainer.train_epoch(self.dummy_data, local_epochs=1)
+        initial_state_dict = model.state_dict()
         
-        # 3. Get the updated state of the model's weights
-        updated_state_dict = self.model.state_dict()
+        # Get data from the real dataset loader
+        data_samples = [self.test_dataset[i] for i in range(len(self.test_dataset))]
+        trainer.train_epoch(data_samples, local_epochs=1)
         
-        # 4. Compare the initial weights with the updated weights
+        updated_state_dict = model.state_dict()
+        
         weights_are_equal = True
         for key in initial_state_dict.keys():
             if not torch.equal(initial_state_dict[key], updated_state_dict[key]):
                 weights_are_equal = False
                 break
         
-        # Assert that the weights have changed
         self.assertFalse(weights_are_equal, "The model weights should have been updated after training.")
 
     def test_loss_reduction(self):
         """
-        Tests that the loss decreases after one or more training epochs.
+        Tests that the loss decreases after one or more training epochs on a real dataset.
         """
-        # Get the loss before training
-        self.model.eval()
-        with torch.no_grad():
-            initial_outputs = self.model(torch.stack([s[0] for s in self.dummy_data]).to(self.device))
-            initial_loss = self.trainer.criterion(initial_outputs, torch.tensor([s[1] for s in self.dummy_data], dtype=torch.long).to(self.device)).item()
-
-        # Perform local training
-        self.trainer.train_epoch(self.dummy_data, local_epochs=10)
+        model = SimpleAudioClassifier(self.input_dim, self.num_classes).to(self.device)
+        optimizer = optim.SGD(model.parameters(), lr=0.01)
+        trainer = FLTrainer(model, optimizer, 0.01, self.device)
         
-        # Get the loss after training
-        self.model.eval()
-        with torch.no_grad():
-            final_outputs = self.model(torch.stack([s[0] for s in self.dummy_data]).to(self.device))
-            final_loss = self.trainer.criterion(final_outputs, torch.tensor([s[1] for s in self.dummy_data], dtype=torch.long).to(self.device)).item()
-
-        # Assert that the final loss is less than the initial loss
-        self.assertLess(final_loss, initial_loss, "The loss should decrease after training.")
+        # Get data from the real dataset loader
+        data_samples = [self.test_dataset[i] for i in range(len(self.test_dataset))]
         
+        model.eval()
+        features = torch.stack([d[0] for d in data_samples]).unsqueeze(1).to(self.device)
+        labels = torch.tensor([d[1] for d in data_samples], dtype=torch.long).to(self.device)
+        initial_outputs = model(features)
+        initial_loss = trainer.criterion(initial_outputs, labels).item()
+
+        trainer.train_epoch(data_samples, local_epochs=5)
+        
+        model.eval()
+        final_outputs = model(features)
+        final_loss = trainer.criterion(final_outputs, labels).item()
+
+        self.assertLess(final_loss, initial_loss, "Loss should decrease after training.")
+
 if __name__ == '__main__':
     unittest.main()
