@@ -1,4 +1,3 @@
-# ehr_main.py
 import concurrent.futures
 import random
 import torch
@@ -9,6 +8,7 @@ import os.path
 from miner import Miner
 from ehr_chain import EHRChain
 from p2p_sim import P2PNode
+from block import Block
 
 # FL imports
 from data_loader import SpeechCommandsDataLoader
@@ -45,7 +45,6 @@ if os.path.exists(blockchain_filepath):
     ehr_chain = EHRChain.load_from_file(filepath=blockchain_filepath)
 else:
     ehr_chain = EHRChain()
-    ehr_chain.create_genesis_block()
     print(f"[📂] New blockchain created with {len(ehr_chain.chain)} blocks.")
 
 miners = [Miner(miner_id=m, chain=ehr_chain, difficulty=2) for m in MINERS]
@@ -91,20 +90,19 @@ def assign_samples(epoch: int) -> Dict[str, str]:
 # ----------------------------------------------
 # Federated training + mining loop (multi-round FedAvg)
 # ----------------------------------------------
-for epoch in range(len(ehr_chain.chain), EPOCHS + len(ehr_chain.chain)):
+for epoch in range(1, EPOCHS + 1):
     print(f"\n====================== EPOCH {epoch} ======================")
     
     # Step 1: Local training
     local_weights: Dict[str, Dict] = {}
     local_accuracies: Dict[str, float] = {}
     local_model_hashes: Dict[str, str] = {}
-    local_predictions: Dict[str, List] = {} # New dictionary to store predictions
+    local_predictions: Dict[str, List] = {}
     
     for miner_id, node in fl_nodes.items():
         print(f"\n[🏥] Node {miner_id} starting local training...")
         
         start_time = time.time()
-        # New return values: predictions
         weights_serialized, acc, model_id, predictions = node.local_train(
             epochs=LOCAL_EPOCHS,
             batch_size=BATCH_SIZE,
@@ -115,7 +113,7 @@ for epoch in range(len(ehr_chain.chain), EPOCHS + len(ehr_chain.chain)):
         local_weights[miner_id] = weights_serialized
         local_accuracies[miner_id] = acc * 100.0
         local_model_hashes[miner_id] = model_id
-        local_predictions[miner_id] = predictions # Store the predictions
+        local_predictions[miner_id] = predictions
         
         print(f"[🏥] Node {miner_id} finished. Local acc: {acc*100:.2f}%, training latency: {local_training_latency:.2f}s")
         print(f"    - Local Model Hash: {model_id}")
@@ -154,22 +152,17 @@ for epoch in range(len(ehr_chain.chain), EPOCHS + len(ehr_chain.chain)):
     print("\n[🔁] Starting PoW race for the global model...")
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [executor.submit(mine_block, miner_obj, global_hash, txs) for miner_obj in miners]
+        futures = {executor.submit(mine_block, miner_obj, global_hash, txs): miner_obj.miner_id for miner_obj in miners}
         
-        mined_blocks = []
+        winner_block = None
         for f in concurrent.futures.as_completed(futures):
             try:
                 res = f.result()
+                if res:
+                    winner_block = res
+                    break
             except Exception as e:
-                res = None
                 print(f"[❌] Miner task raised exception: {e}")
-            mined_blocks.append(res)
-    
-    winner_block = None
-    for b in mined_blocks:
-        if b is not None:
-            winner_block = b
-            break
             
     if not winner_block:
         print("[❌] No miner found a valid block this round.")
