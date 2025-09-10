@@ -31,6 +31,7 @@ class EHRChain:
             with open(filepath, "r") as f:
                 data = json.load(f)
                 if 'chain' in data:
+                    ehr_chain.chain.clear()
                     for block_data in data['chain']:
                         block = Block(
                             index=block_data['index'],
@@ -65,7 +66,6 @@ class EHRChain:
             print("Block rejected: Previous hash is invalid.")
             return False
         
-        # Check if the block's PoW matches the chain's current difficulty
         if not block.hash.startswith("0" * self.difficulty):
             print("Block rejected: Proof of Work is invalid.")
             return False
