@@ -3,6 +3,7 @@ import time
 from client import DecentralizedClient
 from data_loader import SpeechCommandsDataLoader
 import os.path
+from typing import Dict, Tuple, List
 
 # ----------------------------------------------
 # Configuration
@@ -25,19 +26,21 @@ if __name__ == "__main__":
     # Initialize a data loader for all clients
     data_loader = SpeechCommandsDataLoader(num_clients=len(CLIENT_IDS))
 
+    # Create a list of client instances to be run
+    clients_to_run = [
+        DecentralizedClient(
+            client_id=cid,
+            miner_id=MINER_IDS[i],
+            client_data=data_loader.get_client_data(client_id=i),
+            input_dim=INPUT_DIM,
+            output_dim=NUM_CLASSES,
+            target_words=data_loader.target_words
+        )
+        for i, cid in enumerate(CLIENT_IDS)
+    ]
+
     with concurrent.futures.ProcessPoolExecutor(max_workers=len(CLIENT_IDS)) as executor:
-        futures = {
-            executor.submit(
-                DecentralizedClient(
-                    client_id=cid,
-                    miner_id=MINER_IDS[i],
-                    client_data=data_loader.get_client_data(client_id=i),
-                    input_dim=INPUT_DIM,
-                    output_dim=NUM_CLASSES,
-                    target_words=data_loader.target_words
-                ).run_client_loop
-            )
-            for i, cid in enumerate(CLIENT_IDS)
-        }
+        # Use executor.map to run the client loops and wait for them to finish
+        executor.map(lambda c: c.run_client_loop(), clients_to_run)
     
     print("All clients have finished their tasks.")
