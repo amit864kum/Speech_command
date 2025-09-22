@@ -10,7 +10,7 @@ from typing import Dict, List, Tuple
 from fl_node import SimpleAudioClassifier
 from data_loader import SpeechCommandsDataLoader
 from ehr_chain import EHRChain
-from block import Block
+from miner import Miner
 import numpy as np
 import torch.nn.functional as F
 
